@@ -22,8 +22,9 @@ torch.backends.cudnn.benchmark = True
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
-DATA_DIR  = '/media/T2510596/HDD/thesis-mamba-nids/data/data_6feat' 
-CKPT_PATH = '/media/T2510596/HDD/thesis-mamba-nids/checkpoints/mamba_champion_hybrid.pth' 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
+CKPT_PATH = os.path.join(BASE_DIR, 'checkpoints', 'mamba_champion_absolute.pt')
 D_MODEL = 256; N_LAYERS = 2; D_STATE = 16; EXPAND = 2; D_CONV = 4 
 
 # ── Model Architecture (identical to 04_train_mamba.py) ─────────────── 
@@ -189,12 +190,12 @@ print("\n" + "═"*60)
 print("  [2/3] ACCURACY EVALUATION (methodologically rigorous)")
 print("═"*60) 
 
-with open(os.path.join(DATA_DIR, 'unsw_hybrid_eval.pkl'), 'rb') as f:
+with open(os.path.join(DATA_DIR, 'champion_eval.pkl'), 'rb') as f:
     eval_data = pickle.load(f) 
 labels = np.array([d['label'] for d in eval_data]) 
 cats   = np.array([d.get('attack_cat','Normal') for d in eval_data]) 
-train_emb = np.load(os.path.join(DATA_DIR, 'hybrid_champion_train_emb.npy')) 
-eval_emb  = np.load(os.path.join(DATA_DIR, 'hybrid_champion_eval_emb.npy')) 
+train_emb = np.load(os.path.join(DATA_DIR, 'champion_abs_train_emb.npy')) 
+eval_emb  = np.load(os.path.join(DATA_DIR, 'champion_abs_eval_emb.npy')) 
 
 # ── Fix V3: Verify PCA provenance ─────────────────────────
 print(f"  train_emb source : UNSW-NB15 benign training split ONLY")
@@ -236,8 +237,8 @@ print(f"  Ref pool indices   : saved to {ref_pool_path}\n")
 configs = [('PCA-8D+k=1',8,1), ('PCA-12D+k=1',12,1), ('PCA-16D+k=1',16,1), ('PCA-12D+k=3',12,3), ('PCA-12D+k=5',12,5)]
 best_row = None 
 
-print(f"  {'Config':<16} | {'ROC-AUC':>8} | {'PR-AUC':>8} | {'Macro F1':>8} | {'Prec':>8} | {'Recall':>8} | {'FAR':>8}")
-print("  " + "-"*85)
+print(f"  {'Config':<16} | {'Protocol':<10} | {'ROC-AUC':>8} | {'PR-AUC':>8} | {'Macro F1':>8} | {'Prec':>8} | {'Recall':>8} | {'FAR':>8}")
+print("  " + "-"*100)
 
 for name, pd, k in configs: 
     # Fix V3: PCA fit on source-domain training embeddings ONLY
@@ -281,13 +282,29 @@ for name, pd, k in configs:
     tn_count = ((predictions==0)&(test_labels==0)).sum()
     far = fp_count/(fp_count+tn_count) if (fp_count+tn_count)>0 else 0
 
+    fpr_curve, tpr_curve, thresh_curve = roc_curve(test_labels, test_scores)
+    youden_j = tpr_curve - fpr_curve
+    best_oracle_idx = np.argmax(youden_j)
+    oracle_threshold = float(thresh_curve[best_oracle_idx])
+    
+    oracle_predictions = (test_scores >= oracle_threshold).astype(int)
+    oracle_f_macro = f1_score(test_labels, oracle_predictions, average='macro')
+    oracle_prec = precision_score(test_labels, oracle_predictions)
+    oracle_rec = recall_score(test_labels, oracle_predictions)
+    oracle_fp = ((oracle_predictions==1)&(test_labels==0)).sum()
+    oracle_tn = ((oracle_predictions==0)&(test_labels==0)).sum()
+    oracle_far = oracle_fp/(oracle_fp+oracle_tn) if (oracle_fp+oracle_tn)>0 else 0
+
     tag = " BEST" if best_row is None or f_macro > best_row['f_macro'] else "" 
-    print(f"  {name:<16} | {auc:>8.4f} | {ap:>8.4f} | {f_macro:>8.4f} | {prec:>8.4f} | {rec:>8.4f} | {far:>7.4%}{tag}") 
+    print(f"  {name:<16} | {'Rigorous':<10} | {auc:>8.4f} | {ap:>8.4f} | {f_macro:>8.4f} | {prec:>8.4f} | {rec:>8.4f} | {far:>7.4%}{tag}") 
+    print(f"  {'':<16} | {'Oracle':<10} | {auc:>8.4f} | {ap:>8.4f} | {oracle_f_macro:>8.4f} | {oracle_prec:>8.4f} | {oracle_rec:>8.4f} | {oracle_far:>7.4%}") 
     if best_row is None or f_macro > best_row['f_macro']: 
         best_row = {'name':name,'auc':auc,'ap':ap,'f_macro':f_macro,'f_weighted':f_weighted,
                     'f_benign':f_per_class[0],'f_attack':f_per_class[1],'prec':prec,'rec':rec,
                     'far':far,'scores':test_scores,'preds':predictions,'threshold':threshold,
-                    'ref_pool_size':len(ref_scores), 'best_pct':best_pct}
+                    'ref_pool_size':len(ref_scores), 'best_pct':best_pct,
+                    'oracle_threshold':oracle_threshold, 'oracle_f_macro':oracle_f_macro,
+                    'oracle_prec':oracle_prec, 'oracle_rec':oracle_rec, 'oracle_far':oracle_far}
 
 # ═══════════════════════════════════════════════════════════ 
 #  THRESHOLD DOCUMENTATION (Fix V4)
@@ -301,6 +318,9 @@ print(f"  Threshold percentile   : {best_row['best_pct']}th")
 print(f"  Threshold value        : {best_row['threshold']:.12f}")
 print(f"  Operational meaning    : flows with cosine distance")
 print(f"  above {best_row['threshold']:.4f} flagged as anomalous")
+print(f"")
+print(f"  ORACLE BASELINE (Cheat) Threshold: {best_row['oracle_threshold']:.12f}")
+print(f"  (This threshold optimally maximizes Youden's J on the test set labels)")
 print(f"{'═'*60}")
 
 # ═══════════════════════════════════════════════════════════ 
@@ -324,10 +344,10 @@ print(f"  THESIS FINAL NUMBERS (Best: {best_row['name']})")
 print(f"{'═'*60}") 
 print(f"  ROC-AUC    : {best_row['auc']:.4f}") 
 print(f"  PR-AUC     : {best_row['ap']:.4f}") 
-print(f"  Macro F1   : {best_row['f_macro']:.4f}") 
-print(f"  Precision  : {best_row['prec']:.4f}") 
-print(f"  Recall     : {best_row['rec']:.4f}") 
-print(f"  FAR        : {best_row['far']:.4%}") 
+print(f"  Macro F1   : {best_row['f_macro']:.4f} (Oracle: {best_row['oracle_f_macro']:.4f})") 
+print(f"  Precision  : {best_row['prec']:.4f} (Oracle: {best_row['oracle_prec']:.4f})") 
+print(f"  Recall     : {best_row['rec']:.4f} (Oracle: {best_row['oracle_rec']:.4f})") 
+print(f"  FAR        : {best_row['far']:.4%} (Oracle: {best_row['oracle_far']:.4%})") 
 print(f"  Threshold  : {best_row['threshold']:.6f} ({best_row['best_pct']}th pct reference pool)")
 print(f"  Throughput : {best_fps:,.0f} flows/sec") 
 print(f"  Latency    : {best_lat:.4f} ms/flow") 
@@ -401,8 +421,8 @@ print(f"\n  Total CICIDS flows : {len(cic_labels):,}")
 print(f"  CICIDS Ref pool    : {len(cic_ref_idx):,} (15% benign)")
 print(f"  CICIDS Test set    : {len(cic_test_idx):,} ({(cic_test_labels==0).sum():,} benign + {(cic_test_labels==1).sum():,} attack)")
 
-print(f"\n  {'Config':<16} | {'ROC-AUC':>8} | {'PR-AUC':>8} | {'Macro F1':>8} | {'Prec':>8} | {'Recall':>8} | {'FAR':>8}")
-print("  " + "-"*85)
+print(f"\n  {'Config':<16} | {'Protocol':<10} | {'ROC-AUC':>8} | {'PR-AUC':>8} | {'Macro F1':>8} | {'Prec':>8} | {'Recall':>8} | {'FAR':>8}")
+print("  " + "-"*100)
 
 best_row_cic = None
 for name, pd, k in configs:
@@ -435,22 +455,39 @@ for name, pd, k in configs:
     tn_count = ((predictions==0)&(cic_test_labels==0)).sum()
     far = fp_count/(fp_count+tn_count) if (fp_count+tn_count)>0 else 0
 
+    fpr_curve, tpr_curve, thresh_curve = roc_curve(cic_test_labels, test_scores)
+    youden_j = tpr_curve - fpr_curve
+    best_oracle_idx = np.argmax(youden_j)
+    oracle_threshold = float(thresh_curve[best_oracle_idx])
+    
+    oracle_predictions = (test_scores >= oracle_threshold).astype(int)
+    oracle_f_macro = f1_score(cic_test_labels, oracle_predictions, average='macro')
+    oracle_prec = precision_score(cic_test_labels, oracle_predictions)
+    oracle_rec = recall_score(cic_test_labels, oracle_predictions)
+    oracle_fp = ((oracle_predictions==1)&(cic_test_labels==0)).sum()
+    oracle_tn = ((oracle_predictions==0)&(cic_test_labels==0)).sum()
+    oracle_far = oracle_fp/(oracle_fp+oracle_tn) if (oracle_fp+oracle_tn)>0 else 0
+
     tag = " BEST" if best_row_cic is None or f_macro > best_row_cic['f_macro'] else "" 
-    print(f"  {name:<16} | {auc:>8.4f} | {ap:>8.4f} | {f_macro:>8.4f} | {prec:>8.4f} | {rec:>8.4f} | {far:>7.4%}{tag}") 
+    print(f"  {name:<16} | {'Rigorous':<10} | {auc:>8.4f} | {ap:>8.4f} | {f_macro:>8.4f} | {prec:>8.4f} | {rec:>8.4f} | {far:>7.4%}{tag}") 
+    print(f"  {'':<16} | {'Oracle':<10} | {auc:>8.4f} | {ap:>8.4f} | {oracle_f_macro:>8.4f} | {oracle_prec:>8.4f} | {oracle_rec:>8.4f} | {oracle_far:>7.4%}")
     if best_row_cic is None or f_macro > best_row_cic['f_macro']: 
         best_row_cic = {'name':name,'auc':auc,'ap':ap,'f_macro':f_macro,
-                    'prec':prec,'rec':rec, 'far':far, 'threshold':threshold}
+                    'prec':prec,'rec':rec, 'far':far, 'threshold':threshold,
+                    'oracle_threshold':oracle_threshold, 'oracle_f_macro':oracle_f_macro,
+                    'oracle_prec':oracle_prec, 'oracle_rec':oracle_rec, 'oracle_far':oracle_far}
 
 print(f"\n{'═'*60}") 
 print(f"  THESIS FINAL UDA CROSS-DOMAIN NUMBERS (Best: {best_row_cic['name']})") 
 print(f"{'═'*60}") 
 print(f"  ROC-AUC    : {best_row_cic['auc']:.4f}") 
 print(f"  PR-AUC     : {best_row_cic['ap']:.4f}") 
-print(f"  Macro F1   : {best_row_cic['f_macro']:.4f}") 
-print(f"  Precision  : {best_row_cic['prec']:.4f}") 
-print(f"  Recall     : {best_row_cic['rec']:.4f}") 
-print(f"  FAR        : {best_row_cic['far']:.4%}") 
+print(f"  Macro F1   : {best_row_cic['f_macro']:.4f} (Oracle: {best_row_cic['oracle_f_macro']:.4f})") 
+print(f"  Precision  : {best_row_cic['prec']:.4f} (Oracle: {best_row_cic['oracle_prec']:.4f})") 
+print(f"  Recall     : {best_row_cic['rec']:.4f} (Oracle: {best_row_cic['oracle_rec']:.4f})") 
+print(f"  FAR        : {best_row_cic['far']:.4%} (Oracle: {best_row_cic['oracle_far']:.4%})") 
 print(f"  Threshold  : {best_row_cic['threshold']:.6f} (97th pct CICIDS ref pool)")
+print(f"  Oracle Thr : {best_row_cic['oracle_threshold']:.6f} (Optimal test labels)")
 print(f"  Throughput : {cic_fps:,.0f} flows/sec") 
 print(f"  Latency    : {cic_lat:.4f} ms/flow") 
 print(f"{'═'*60}")

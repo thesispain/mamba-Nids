@@ -17,8 +17,9 @@ except ImportError:
     print("mamba_ssm not found. Please install it first.")
     sys.exit(1)
 
-DATA_DIR  = '/media/T2510596/HDD/thesis-mamba-nids/data/data_6feat'
-CKPT_PATH = '/media/T2510596/HDD/thesis-mamba-nids/checkpoints/mamba_crossdomain_v1_latest.pt'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
+CKPT_PATH = os.path.join(BASE_DIR, 'checkpoints', 'mamba_crossdomain_v1_latest.pt')
 D_MODEL = 256; N_LAYERS = 2; D_STATE = 16; EXPAND = 2; D_CONV = 4
 
 class MixedPacketEmbedder6(nn.Module):

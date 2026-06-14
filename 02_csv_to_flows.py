@@ -34,12 +34,15 @@ from pathlib import Path
 from collections import defaultdict
 
 # ── Config ────────────────────────────────────────────────────────────────
-IN_CSV          = '/home/T2510596/1TB_Storage_new/DATA/unsw_packets.csv'
-OUT_DIR         = Path('/home/T2510596/Downloads/totally fresh-20260430T182930Z-3-001/'
-                       'totally fresh/Organized_Final/data/unswnb15_full')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
+os.makedirs(DATA_DIR, exist_ok=True)
+
+IN_CSV          = os.path.join(DATA_DIR, 'unsw_packets.csv')
+OUT_DIR         = Path(os.path.join(DATA_DIR, 'unswnb15_full'))
 OUT_PRETRAIN    = OUT_DIR / 'pretrain_benign.pkl'
 OUT_EVAL        = OUT_DIR / 'eval_mixed.pkl'
-LOG_FILE        = '/home/T2510596/1TB_Storage_new/DATA/stage2.log'
+LOG_FILE        = os.path.join(DATA_DIR, 'stage2.log')
 
 MAX_PACKETS     = 32    # Pad/crop to this length. Set higher for future experiments.
 CHUNK_SIZE      = 500_000   # Rows to read at once for memory efficiency

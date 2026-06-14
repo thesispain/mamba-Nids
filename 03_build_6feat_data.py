@@ -9,9 +9,13 @@ import os, pickle, time
 import numpy as np
 from collections import defaultdict, Counter
 
-ABSLOG_DIR = '/home/T2510596/1TB_Storage_new/thesis-mamba-nids/data/data_abslog'
-OUT_DIR    = '/home/T2510596/1TB_Storage_new/thesis-mamba-nids/data/data_champion'
-CSV_PATH   = '/home/T2510596/1TB_Storage_new/DATA/unsw_packets.csv'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
+os.makedirs(DATA_DIR, exist_ok=True)
+
+ABSLOG_DIR = DATA_DIR
+OUT_DIR    = DATA_DIR
+CSV_PATH   = os.path.join(DATA_DIR, 'unsw_packets.csv')
 os.makedirs(OUT_DIR, exist_ok=True)
 SEED = 42; SEQ_LEN = 32
 

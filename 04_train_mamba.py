@@ -13,9 +13,10 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-DATA_DIR  = '/media/T2510596/HDD/thesis-mamba-nids/data/data_champion'
-CKPT_DIR  = '/media/T2510596/HDD/thesis-mamba-nids/checkpoints'
-RESULTS_DIR = '/home/T2510596/Downloads/totally fresh-20260430T182930Z-3-001/scripts/champion_results'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
+CKPT_DIR = os.path.join(BASE_DIR, 'checkpoints')
+RESULTS_DIR = os.path.join(BASE_DIR, 'results')
 os.makedirs(CKPT_DIR, exist_ok=True)
 os.makedirs(RESULTS_DIR, exist_ok=True)
 

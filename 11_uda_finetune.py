@@ -12,8 +12,10 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-DATA_DIR  = '/media/T2510596/HDD/thesis-mamba-nids/data/data_6feat'
-CKPT_DIR  = '/media/T2510596/HDD/thesis-mamba-nids/checkpoints'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
+CKPT_DIR = os.path.join(BASE_DIR, 'checkpoints')
+os.makedirs(CKPT_DIR, exist_ok=True)
 BASE_CKPT = os.path.join(CKPT_DIR, 'mamba_champion_hybrid.pth')
 NEW_CKPT  = os.path.join(CKPT_DIR, 'mamba_uda_cicids_3ep.pth')
 

@@ -35,13 +35,17 @@ DLT_RAW_1     = 12   # Raw IP v1
 DLT_RAW_2     = 101  # Raw IP v2
 
 # ── Config ────────────────────────────────────────────────────────────────
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
+os.makedirs(DATA_DIR, exist_ok=True)
+
 PCAP_DIRS = [
-    '/home/T2510596/1TB_Storage_new/DATA/pcap-22.1.2015',
-    '/home/T2510596/1TB_Storage_new/DATA/PCAP-17.2.2015',
+    os.path.join(DATA_DIR, 'pcap-22.1.2015'),
+    os.path.join(DATA_DIR, 'PCAP-17.2.2015'),
 ]
-GT_FILE   = '/home/T2510596/1TB_Storage_new/DATA/NUSW-NB15_GT.csv'
-OUT_CSV   = '/home/T2510596/1TB_Storage_new/DATA/unsw_packets.csv'
-LOG_FILE  = '/home/T2510596/1TB_Storage_new/DATA/stage1.log'
+GT_FILE   = os.path.join(DATA_DIR, 'NUSW-NB15_GT.csv')
+OUT_CSV   = os.path.join(DATA_DIR, 'unsw_packets.csv')
+LOG_FILE  = os.path.join(DATA_DIR, 'stage1.log')
 
 # Known UNSW-NB15 attacker IPs (fixed lab topology)
 ATTACKER_IPS = {'175.45.176.0', '175.45.176.1', '175.45.176.2', '175.45.176.3'}
