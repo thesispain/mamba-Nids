@@ -51,20 +51,6 @@ python3 05_eval_mamba.py
 Performs the final evaluation using FAISS PCA. 
 *Note: This script strictly isolates a 15% reference pool from the target domain to calibrate the threshold, preventing test-set data leakage.*
 
----
 
-## 📊 Results (UNSW-NB15)
 
-Mamba-NIDS was rigorously evaluated against a theoretical "Oracle Baseline" (which artificially maximizes Youden's J statistic using test labels, a common flaw in NIDS literature).
 
-| Config           | Protocol   |  ROC-AUC |   PR-AUC | Macro F1 |     Prec |   Recall |     FAR |
-|------------------|------------|----------|----------|----------|----------|----------|---------|
-| **PCA-12D+k=1**  | Rigorous   |   0.9250 |   0.9410 |   0.8845 |   0.9120 |   0.8710 |   2.10% |
-|                  | Oracle     |   0.9250 |   0.9410 |   0.9540 |   0.9610 |   0.9480 |   1.05% |
-
-*The rigorous protocol correctly simulates real-world deployment without test-set leakage, highlighting the methodological gap in SOTA claims.*
-
-## ⚡ Inference Throughput
-Measured on a single NVIDIA GPU using `torch.compile`:
-* **Encoding Latency**: ~0.0008 ms/flow
-* **Total Throughput**: 1,250,000 flows/sec
