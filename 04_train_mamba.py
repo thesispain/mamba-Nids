@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""
-51_train_champion_mamba.py — Final Champion: Pure Absolute + NT-Xent
-=====================================================================
-Pure PyTorch Mamba (no mamba_ssm dependency). NT-Xent contrastive loss.
-Dual CutMix + temporal jitter augmentation. 100% benign training.
-"""
 import os, sys, time, pickle, json
 import numpy as np
 import torch
@@ -24,14 +18,12 @@ D_MODEL = 256; N_LAYERS = 4; D_STATE = 16; EXPAND = 2; D_CONV = 4
 BATCH_SIZE = 512; LR = 1e-4; EPOCHS = 100; TAU = 0.5; PROJ_DIM = 128
 PATIENCE = 8; CUTMIX_RATIO = 0.4; JITTER_STD = 0.15
 
-# ── Dataset ───────────────────────────────────────────────────────────
 class FlowDataset(Dataset):
     def __init__(self, data):
         self.features = np.array([d['features'] for d in data], dtype=np.float32)
     def __len__(self): return len(self.features)
     def __getitem__(self, idx): return self.features[idx]
 
-# ── 6-Feature Embedder ───────────────────────────────────────────────
 class MixedPacketEmbedder6(nn.Module):
     def __init__(self, d_model=256):
         super().__init__()
@@ -51,7 +43,6 @@ class MixedPacketEmbedder6(nn.Module):
         port_cat = self.port_cat_embed(x[:,:,5].long().clamp(0,2))
         return self.norm(torch.cat([proto, length, flags, iat, direction, port_cat], dim=-1))
 
-# ── Pure PyTorch Mamba Block (no mamba_ssm dependency) ────────────────
 class PurePyTorchMamba(nn.Module):
     def __init__(self, d_model, d_state=16, d_conv=4, expand=2):
         super().__init__()
@@ -90,7 +81,6 @@ class PurePyTorchMamba(nn.Module):
         y = y * F.silu(z) + x_in * self.D.unsqueeze(0).unsqueeze(0)
         return self.out_proj(y)
 
-# ── Mamba Encoder ─────────────────────────────────────────────────────
 class MambaEncoder(nn.Module):
     def __init__(self, d_model=256, n_layers=2):
         super().__init__()
@@ -114,7 +104,6 @@ class ProjectionHead(nn.Module):
     def forward(self, x):
         return F.normalize(self.net(x), dim=-1)
 
-# ── NT-Xent Loss ─────────────────────────────────────────────────────
 def nt_xent_loss(z1, z2, tau=0.5):
     z = torch.cat([z1, z2], dim=0)
     N = z1.size(0)
@@ -124,7 +113,6 @@ def nt_xent_loss(z1, z2, tau=0.5):
     pos = torch.cat([torch.diag(sim, N), torch.diag(sim, -N)])
     return -pos.mean() + torch.logsumexp(sim, dim=1).mean()
 
-# ── Dual CutMix + Temporal Jitter Augmentation ───────────────────────
 def dual_augment(batch):
     B, T, F_dim = batch.shape
     n_cut = int(T * CUTMIX_RATIO)
@@ -136,7 +124,6 @@ def dual_augment(batch):
         v = batch.clone()
         for i in range(B):
             v[i, pos[i]:pos[i]+n_cut] = donor[i, pos[i]:pos[i]+n_cut]
-        # Temporal jitter on continuous features (LogLen=col1, LogIAT=col3)
         jitter_len = 1.0 + torch.randn(B, T, 1, device=batch.device) * JITTER_STD
         jitter_iat = 1.0 + torch.randn(B, T, 1, device=batch.device) * JITTER_STD
         v[:, :, 1:2] = v[:, :, 1:2] * jitter_len
@@ -144,17 +131,12 @@ def dual_augment(batch):
         views.append(v)
     return views[0], views[1]
 
-# ═══════════════════════════════════════════════════════════════════════
 def train():
-    print("="*70)
-    print("  FINAL CHAMPION — Pure Absolute + NT-Xent + Dual CutMix/Jitter")
-    print(f"  2L/256d Mamba | Epochs: {EPOCHS} | Patience: {PATIENCE}")
-    print(f"  Device: {DEVICE}")
-    print("="*70)
+    print(f"Device: {DEVICE}")
 
     with open(os.path.join(DATA_DIR, 'champion_train.pkl'), 'rb') as f:
         data = pickle.load(f)
-    print(f"  Loaded {len(data):,} benign flows (Pure Absolute Log)")
+    print(f"Loaded {len(data):,} benign flows")
 
     np.random.seed(42)
     idx = np.random.permutation(len(data))
@@ -173,7 +155,7 @@ def train():
     opt = torch.optim.AdamW(list(encoder.parameters()) + list(proj.parameters()), lr=LR, weight_decay=1e-5)
 
     total_params = sum(p.numel() for p in encoder.parameters())
-    print(f"  Encoder params: {total_params:,}")
+    print(f"Encoder params: {total_params:,}")
 
     best_val = float('inf')
     patience_counter = 0
@@ -220,18 +202,17 @@ def train():
             torch.save({'encoder': encoder.state_dict(), 'proj': proj.state_dict(),
                         'epoch': epoch+1, 'val_loss': avg_val},
                        os.path.join(CKPT_DIR, 'mamba_champion_absolute.pt'))
-            print(f"  ✅ Checkpoint saved. Best val: {best_val:.4f}")
+            print(f"  Checkpoint saved. Best val: {best_val:.4f}")
         else:
             patience_counter += 1
-            print(f"  ⚠️ No improvement. Patience: {patience_counter}/{PATIENCE}")
+            print(f"  No improvement. Patience: {patience_counter}/{PATIENCE}")
             if patience_counter >= PATIENCE:
-                print(f"  🛑 Early stopping at epoch {epoch+1}")
+                print(f"  Early stopping at epoch {epoch+1}")
                 break
 
     with open(os.path.join(RESULTS_DIR, 'champion_training_history.json'), 'w') as f:
         json.dump(history, f, indent=2)
 
-    # Extract embeddings
     print("\nExtracting embeddings with best checkpoint...")
     ckpt = torch.load(os.path.join(CKPT_DIR, 'mamba_champion_absolute.pt'), map_location=DEVICE, weights_only=False)
     encoder.load_state_dict(ckpt['encoder'])
@@ -255,7 +236,7 @@ def train():
         print(f"    Saved: {emb_name} — {all_emb.shape}")
         del split_data, feats
 
-    print(f"\n✅ Champion training complete. Best val: {best_val:.4f}")
+    print(f"\nTraining complete. Best val: {best_val:.4f}")
 
 if __name__ == '__main__':
     train()

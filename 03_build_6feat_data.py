@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""
-50_build_champion_data.py — Pure Absolute Log Dataset
-======================================================
-No delta. No hybrid. Pure absolute magnitudes for ALL 32 packets.
-Train: 100% Benign. Eval: Everything (all attacks = zero-day).
-"""
 import os, pickle, time
 import numpy as np
 from collections import defaultdict, Counter
@@ -42,29 +36,21 @@ def build_absolute_features(packets):
         features[i, 5] = float(pkt['port_cat'])
     return features, n
 
-print("="*70)
-print("  CHAMPION DATA: Pure Absolute Log — No Delta, No Hybrid")
-print("="*70)
-
-# Check if abslog data already exists from the previous pipeline
 abslog_train = os.path.join(ABSLOG_DIR, 'unsw_abslog_train.pkl')
 abslog_eval  = os.path.join(ABSLOG_DIR, 'unsw_abslog_eval.pkl')
 
 if os.path.exists(abslog_train) and os.path.exists(abslog_eval):
-    print("\n  Found existing absolute-log data. Re-partitioning...")
-    print(f"  Loading {abslog_train}...")
+    print("Found existing absolute-log data. Re-partitioning...")
     with open(abslog_train, 'rb') as f:
         part1 = pickle.load(f)
-    print(f"  Loading {abslog_eval}...")
     with open(abslog_eval, 'rb') as f:
         part2 = pickle.load(f)
 
     all_data = part1 + part2
     del part1, part2
-    print(f"  Combined: {len(all_data):,} flows")
 
 else:
-    print(f"\n  No cached data. Rebuilding from CSV: {CSV_PATH}")
+    print(f"No cached data. Rebuilding from CSV: {CSV_PATH}")
     import pandas as pd
     flows = defaultdict(lambda: {'packets': [], 'labels': [], 'cats': []})
     total_packets = 0
@@ -91,7 +77,6 @@ else:
             flows[key]['cats'].append(cat)
 
     print(f"  Packets: {total_packets:,} | Flows: {len(flows):,} | Time: {time.time()-t0:.0f}s")
-    print("  Building features...")
     all_data = []
     for key, fdata in flows.items():
         features, n_real = build_absolute_features(fdata['packets'])
@@ -101,7 +86,6 @@ else:
         all_data.append({'features': features, 'label': label, 'attack_cat': cat, 'n_real_packets': n_real})
     del flows
 
-# Re-partition: Train = 100% Benign, Eval = ALL
 np.random.seed(SEED)
 benign = [d for d in all_data if d['label'] == 0]
 attacks = [d for d in all_data if d['label'] == 1]
@@ -113,20 +97,12 @@ train_data = benign[:split]
 eval_data = benign[split:] + attacks
 np.random.shuffle(eval_data)
 
-print(f"\n  TRAIN: {len(train_data):,} flows (100% Benign)")
+print(f"  TRAIN: {len(train_data):,} flows (100% Benign)")
 print(f"  EVAL:  {len(eval_data):,} flows")
 eval_cats = Counter(d['attack_cat'] for d in eval_data)
 for cat, n in sorted(eval_cats.items(), key=lambda x: -x[1]):
     print(f"    {cat:20s}: {n:>8,}")
 
-# Verify encoding
-s = train_data[0]['features']
-n_real = int(np.sum(~np.all(s == 0, axis=1)))
-print(f"\n  Encoding check (first train flow, {n_real} packets):")
-for i in range(min(4, n_real)):
-    print(f"    Pkt {i}: LogLen={s[i,1]:.4f} LogIAT={s[i,3]:.4f}  ← ALL ABSOLUTE")
-
-# Save
 train_path = os.path.join(OUT_DIR, 'champion_train.pkl')
 eval_path  = os.path.join(OUT_DIR, 'champion_eval.pkl')
 with open(train_path, 'wb') as f:
@@ -134,6 +110,5 @@ with open(train_path, 'wb') as f:
 with open(eval_path, 'wb') as f:
     pickle.dump(eval_data, f, protocol=4)
 
-print(f"\n  Saved: {train_path} ({os.path.getsize(train_path)/1e6:.0f} MB)")
+print(f"  Saved: {train_path} ({os.path.getsize(train_path)/1e6:.0f} MB)")
 print(f"  Saved: {eval_path} ({os.path.getsize(eval_path)/1e6:.0f} MB)")
-print("\n✅ Champion data built.")

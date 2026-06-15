@@ -47,7 +47,7 @@ class MambaEncoder(nn.Module):
         self.embedder = MixedPacketEmbedder6(d_model)
         self.dropout = nn.Dropout(0.1)
         self.layers = nn.ModuleList([
-            Mamba(d_model=d_model, d_state=D_STATE, d_conv=D_CONV, expand=EXPAND) 
+            Mamba(d_model=d_model, d_state=D_STATE, d_conv=D_CONV, expand=EXPAND)
             for _ in range(n_layers)
         ])
         self.norm = nn.LayerNorm(d_model)
@@ -88,13 +88,11 @@ def extract_embeddings(data_list, desc="Data"):
             emb_list.append(encoder.encode_pooled(xb.to(DEVICE)).cpu().numpy())
     return np.concatenate(emb_list)
 
-# ── 1. Load Source Domain Train (UNSW) for PCA Fitting ────────────────────────
 print("\nLoading UNSW Train for PCA fit...")
 with open(os.path.join(DATA_DIR, 'unsw_hybrid_train.pkl'), 'rb') as f: train_data = pickle.load(f)
 source_train_emb = extract_embeddings(train_data, "Source Train Embeddings")
 del train_data; gc.collect()
 
-# ── 2. Load Target Domain (CICIDS-17) for Evaluation ─────────────────────────
 print("\nLoading CICIDS-2017 Eval Data...")
 with open(os.path.join(DATA_DIR, 'cicids_6feat_eval_v2.pkl'), 'rb') as f: eval_data = pickle.load(f)
 
@@ -102,16 +100,11 @@ labels = np.array([d.get('label', 0) if isinstance(d, dict) else 0 for d in eval
 benign_idx = np.where(labels == 0)[0]
 attack_idx = np.where(labels == 1)[0]
 
-# Split 70/10/5/15 like Honest Validation
-# We only need 10% for Ref, 15% Test for Benign
 b_train, b_rest = train_test_split(benign_idx, train_size=0.70, random_state=42)
-b_ref, b_test_val = train_test_split(b_rest, train_size=0.3333, random_state=42) # 33% of 30% = 10%
-b_val, b_test = train_test_split(b_test_val, train_size=0.25, random_state=42) # 25% of 20% = 5%, leaving 15% test
-
-# Attacks: 20% Val, 80% Test
+b_ref, b_test_val = train_test_split(b_rest, train_size=0.3333, random_state=42)
+b_val, b_test = train_test_split(b_test_val, train_size=0.25, random_state=42)
 a_val, a_test = train_test_split(attack_idx, train_size=0.20, random_state=42)
 
-# Build Eval Arrays
 ref_indices = np.sort(b_ref)
 test_indices = np.sort(np.concatenate([b_test, a_test]))
 
@@ -125,30 +118,27 @@ ref_emb = extract_embeddings(ref_data, "Reference Pool Embeddings")
 test_emb = extract_embeddings(test_data, "Test Set Embeddings")
 del ref_data, test_data; gc.collect()
 
-# ── 3. FAISS Evaluation Logic ────────────────────────────────────────────────
-print("\n" + "═"*80)
-print("  [3/3] HONEST CROSS-DOMAIN FAISS EVALUATION")
-print("═"*80)
+print("\n" + "=" * 80)
+print("  CROSS-DOMAIN FAISS EVALUATION")
+print("=" * 80)
 
-configs = [('PCA-12D+k=1', 12, 1)] 
-best_row = None 
+configs = [('PCA-12D+k=1', 12, 1)]
+best_row = None
 
-for name, pd, k in configs: 
-    pca = PCA(n_components=pd, whiten=True, random_state=42) 
-    tp = pca.fit_transform(source_train_emb).astype(np.float32)   
+for name, pd, k in configs:
+    pca = PCA(n_components=pd, whiten=True, random_state=42)
+    tp = pca.fit_transform(source_train_emb).astype(np.float32)
     rp = pca.transform(ref_emb).astype(np.float32)
-    ep = pca.transform(test_emb).astype(np.float32)          
+    ep = pca.transform(test_emb).astype(np.float32)
     faiss.normalize_L2(tp); faiss.normalize_L2(rp); faiss.normalize_L2(ep)
 
-    res = faiss.StandardGpuResources() 
-    idx = faiss.index_cpu_to_gpu(res, 0, faiss.IndexFlatIP(pd)) 
-    idx.add(tp) 
+    res = faiss.StandardGpuResources()
+    idx = faiss.index_cpu_to_gpu(res, 0, faiss.IndexFlatIP(pd))
+    idx.add(tp)
 
-    # Score Reference Pool
     ref_sims, _ = idx.search(rp, k)
     ref_scores = 1.0 - (ref_sims[:,0] if k==1 else ref_sims.mean(axis=1))
 
-    # HONEST GAP SWEEP (on Reference Pool ONLY)
     best_pct = 97.0
     best_gap = -1
     for pct in [90, 91, 92, 93, 94, 95, 96, 97, 97.5, 98, 98.5, 99, 99.5]:
@@ -163,7 +153,6 @@ for name, pd, k in configs:
 
     final_threshold = np.percentile(ref_scores, best_pct)
 
-    # Score Test Set
     test_sims, _ = idx.search(ep, k)
     test_scores = 1.0 - (test_sims[:,0] if k==1 else test_sims.mean(axis=1))
     preds = (test_scores > final_threshold).astype(int)
@@ -177,11 +166,11 @@ for name, pd, k in configs:
 
     print(f"  {name:<16} | AUC: {auc:>8.4f} | F1: {mf1:>8.4f} | FAR: {far:>7.4%} | Threshold Pct: {best_pct}")
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print(f"  FINAL MAMBA CROSS-DOMAIN METRICS (UNSW -> CICIDS17)")
-print("="*80)
+print("=" * 80)
 print(f"  ROC-AUC   : {auc:.4f}")
 print(f"  PR-AUC    : {ap:.4f}")
 print(f"  Macro F1  : {mf1:.4f}")
 print(f"  FAR       : {far:.4%}")
-print("="*80)
+print("=" * 80)
